@@ -1,0 +1,37 @@
+# Emacs auto-save and backup files
+*~
+\#*\#
+.\#*
+
+# Auto-save list
+auto-save-list/
+
+# Compiled files
+*.elc
+eln-cache/
+
+# Package directories
+elpa/
+straight/
+
+# Cache directories
+.cache/
+
+# Eshell
+eshell/history
+eshell/lastdir
+
+# Transient
+transient/
+
+# URL cache
+url/
+
+# Tramp connection history
+tramp
+
+# Project list
+projects
+
+# EWW bookmarks (optional - remove this line if you want to track bookmarks)
+eww-bookmarks
