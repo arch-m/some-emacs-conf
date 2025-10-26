@@ -1,6 +1,11 @@
 ;; (setq package-archives '(("gnu-devel" . 
 ;;                         ("nongnu-devel" . 
 
+(let* ((state-root (expand-file-name "var" user-emacs-directory))
+       (elpa-dir (expand-file-name "elpa" state-root)))
+  (setq package-user-dir elpa-dir)
+  (make-directory package-user-dir t))
+
 (require 'package)
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
 ;; Comment/uncomment this line to enable MELPA Stable if desired.  See `package-archive-priorities`
@@ -9,6 +14,15 @@
 ;;(add-to-list 'package-archives '("gnu-devel" . "https://elpa.gnu.org/devel/") t)
 ;;(add-to-list 'package-archives '("nongnu-devel" . "https://elpa.nongnu.org/nongnu-devel/") t)
 (package-initialize)
+
+(add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
+
+(require 'core-bootstrap)
+(require 'ui-config)
+(require 'editing-config)
+(require 'tools-config)
+(require 'ai-suite)
+(require 'modal-editing)
 
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
@@ -29,14 +43,3 @@
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  )
-
-(tool-bar-mode -1) (menu-bar-mode -1) (blink-cursor-mode -1)
-
-
-(load-file (expand-file-name "emacs-inicial.el" user-emacs-directory))
-(load-file (expand-file-name "emacs-viber.el" user-emacs-directory))
-(require 'emacs-inicial)
-(require 'emacs-viber)
-
-(require 'evil)
-(evil-mode 1)

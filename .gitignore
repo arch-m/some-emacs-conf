@@ -3,6 +3,8 @@
 \#*\#
 .\#*
 
+var/
+
 # Auto-save list
 auto-save-list/
 
