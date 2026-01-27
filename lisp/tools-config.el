@@ -22,6 +22,28 @@
 (defvar cursor-ai--dirvish-preview-last nil
   "Remember the last file path rendered in the Dirvish preview window.")
 
+;; Prefer the Straight-installed `transient' over the (usually older) bundled copy.
+;; This avoids \"void-function transient--set-layout\" errors when packages such as
+;; gptel load their transient menus before Straight has adjusted `load-path'.
+(let ((transient-build-dir
+       (cursor-ai--state-path "straight" "straight" "build" "transient")))
+  (when (file-directory-p transient-build-dir)
+    (add-to-list 'load-path transient-build-dir)))
+
+(defun cursor-ai--dirvish-data-fallback (orig dir buffer inhibit-setup)
+  "Wrap ORIG to guarantee a basic Dirvish data refresh for DIR in BUFFER.
+This guards against `cl-no-applicable-method' when Dirvish generics are missing
+specialisations (e.g. on older builds) by running the usual setup hook."
+  (condition-case err
+      (funcall orig dir buffer inhibit-setup)
+    (cl-no-applicable-method
+     (when (buffer-live-p buffer)
+       (with-current-buffer buffer
+         (unless inhibit-setup
+           (run-hooks 'dirvish-setup-hook))))
+     (message "Dirvish fallback: %s" err)
+     nil)))
+
 (defun cursor-ai--ensure-dirvish ()
   "Signal an error when Dirvish is unavailable."
   (unless (require 'dirvish nil 'noerror)
@@ -103,6 +125,8 @@ When FILE is nil try to infer it from context before prompting."
          (funcall state action cand))
         (_ (funcall state action cand))))))
 
+(use-package cond-let)
+
 (use-package dirvish
   :init
   (dirvish-override-dired-mode)
@@ -129,6 +153,8 @@ When FILE is nil try to infer it from context before prompting."
       (when (boundp source)
         (setf (plist-get (symbol-value source) :state)
               #'cursor-ai--consult-buffer-state)))))
+  (unless (advice-member-p #'cursor-ai--dirvish-data-fallback 'dirvish-data-for-dir)
+    (advice-add 'dirvish-data-for-dir :around #'cursor-ai--dirvish-data-fallback))
 
 (use-package treemacs
   :bind (("C-c e" . treemacs)
@@ -170,8 +196,49 @@ When FILE is nil try to infer it from context before prompting."
         projectile-enable-caching t
         projectile-indexing-method 'alien))
 
+(use-package persp-mode
+  :init
+  (let ((persp-dir (cursor-ai--state-path "persp")))
+    (make-directory persp-dir t)
+    (setq persp-save-dir persp-dir))
+  (persp-mode 1))
+
+(use-package elfeed
+  :commands (elfeed)
+  :init
+  (let ((elfeed-dir (cursor-ai--state-path "elfeed")))
+    (make-directory elfeed-dir t)
+    (setq elfeed-db-directory elfeed-dir))
+  :custom
+  (elfeed-feeds
+   '(("https://www.smashingmagazine.com/feed/" frontend design)
+     ("https://developer.mozilla.org/en-US/blog/rss.xml" frontend web)
+     ("https://devblogs.microsoft.com/dotnet/feed/" backend dotnet microsoft)
+     ("https://aws.amazon.com/blogs/aws/feed/" infra cloud aws)
+     ("https://aws.amazon.com/new/feed/" infra releases aws)
+     ("https://k8s.io/docs/reference/issues-security/official-cve-feed/feed.xml"
+      infra security kubernetes))))
+
+(use-package transient
+  :demand t)
+
+(define-prefix-command 'magit-prefix-map)
+(define-key magit-prefix-map (kbd "s") #'magit-status)
+(define-key magit-prefix-map (kbd "l") #'magit-log)
+(define-key magit-prefix-map (kbd "b") #'magit-branch)
+(define-key magit-prefix-map (kbd "c") #'magit-commit)
+(define-key magit-prefix-map (kbd "d") #'magit-diff)
+(define-key magit-prefix-map (kbd "f") #'magit-fetch)
+(define-key magit-prefix-map (kbd "p") #'magit-push)
+(define-key magit-prefix-map (kbd "P") #'magit-pull)
+(define-key magit-prefix-map (kbd "r") #'magit-rebase)
+(define-key magit-prefix-map (kbd "m") #'magit-merge)
+(define-key magit-prefix-map (kbd "a") #'magit-stage)
+(define-key magit-prefix-map (kbd "u") #'magit-unstage)
+
 (use-package magit
-  :bind (("C-x g" . magit-status)
+  :after transient
+  :bind (("C-x g" . magit-prefix-map)
          ("C-c v" . magit-status))
   :config
   (setq magit-display-buffer-function

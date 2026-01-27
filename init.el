@@ -16,6 +16,10 @@
 (package-initialize)
 
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
+(add-to-list 'load-path (expand-file-name "base" user-emacs-directory))
+(add-to-list 'custom-theme-load-path (expand-file-name "themes" user-emacs-directory))
+
+(load-theme 'vscode-light-modern t)
 
 (require 'core-bootstrap)
 (require 'ui-config)
@@ -23,6 +27,9 @@
 (require 'tools-config)
 (require 'ai-suite)
 (require 'modal-editing)
+(require 'comunicacion)
+(require 'lsp-java)
+(require 'keybindings)
 
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
@@ -30,7 +37,9 @@
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  '(custom-safe-themes
-   '("95ee4d370f4b66ff2287d8075f8fe5f58c4a9b9c1e65d663b15174f1a8c57717"
+   '("2c6bb1f19a443598c5a665f2c3897900e0673a86660a4f162d96de3c2fc46548"
+     "993aac313027a1d6e70d45b98e121492c1b00a0daa5a8629788ed7d523fe62c1"
+     "95ee4d370f4b66ff2287d8075f8fe5f58c4a9b9c1e65d663b15174f1a8c57717"
      "45631691477ddee3df12013e718689dafa607771e7fd37ebc6c6eb9529a8ede5"
      "9b21c848d09ba7df8af217438797336ac99cbbbc87a08dc879e9291673a6a631"
      "d5707b94a82990a5971e3b2b70f66f0bb06a2e9204006a9439c86022831c3df9"
