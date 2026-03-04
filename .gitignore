@@ -37,3 +37,6 @@ projects
 
 # EWW bookmarks (optional - remove this line if you want to track bookmarks)
 eww-bookmarks
+
+# Local secrets for AI integrations
+agent/openai-env.el

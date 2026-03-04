@@ -21,6 +21,8 @@
                                                          :user "apikey"))))
               (let ((value (plist-get secret :secret)))
                 (if (functionp value) (funcall value) value)))))
+  (setq gptel-model 'gpt-5.2)
+  
   (unless gptel-api-key
     (message "gptel: missing OPENAI_API_KEY. Set an env var or auth-source entry."))
   (gptel-make-ollama "Ollama"
@@ -55,10 +57,9 @@
     t))
 
 (define-prefix-command 'cursor-ai-map)
-(global-set-key (kbd "C-c a") #'cursor-ai-map)
+(global-set-key (kbd "C-c A") #'cursor-ai-map)
 
 (define-prefix-command 'cursor-ai-shell-map)
-(global-set-key (kbd "C-c s") #'cursor-ai-shell-map)
 
 (declare-function agent-shell "agent-shell" (&optional new-shell))
 (declare-function agent-shell-toggle "agent-shell" ())
@@ -67,8 +68,14 @@
 (declare-function agent-shell-view-acp-logs "agent-shell" ())
 (declare-function agent-shell-reset-logs "agent-shell" ())
 (declare-function agent-shell-project-buffers "agent-shell" ())
-(declare-function agent-shell-insert "agent-shell" (&key text submit))
+(declare-function agent-shell-insert "agent-shell" (&rest args))
 (declare-function agent-shell-add-region "agent-shell" ())
+(declare-function chatgpt-shell-start "chatgpt-shell"
+                  (&optional no-focus new-session ignore-as-primary model-version system-prompt))
+(declare-function chatgpt-shell-send-region "chatgpt-shell" (&optional review))
+
+;; Declared for byte-compilation and dynamic let-binding before chatgpt-shell loads.
+(defvar chatgpt-shell-model-version nil)
 
 (defun cursor-ai--ensure-agent-shell ()
   "Ensure there's an agent-shell ready for the current project.
@@ -125,19 +132,26 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
 (defvar cursor-ai--chat-window-width 84
   "Width for the AI chat window on the right.")
 
+(defconst cursor-ai--chat-buffer-name "*Cursor-Chat*"
+  "Buffer name used for the persistent AI chat window.")
+
 (defun cursor-ai--open-chat ()
   "Open a persistent gptel chat window on the right."
   (interactive)
-  (let ((buf (get-buffer-create "*Cursor-Chat*")))
+  (let ((buf (gptel cursor-ai--chat-buffer-name nil nil nil)))
     (unless (get-buffer-window buf)
-      (split-window-right)
-      (other-window 1))
+      (condition-case nil
+          (progn
+            (split-window-right)
+            (other-window 1))
+        (error (display-buffer buf))))
     (switch-to-buffer buf)
-    (unless (derived-mode-p 'gptel-mode) (gptel))
     (let* ((win (get-buffer-window buf))
            (target (- cursor-ai--chat-window-width (window-width win))))
       (when (window-live-p win)
-        (window-resize win target t)))))
+        (condition-case nil
+            (window-resize win target t)
+          (error nil))))))
 
 (defun cursor-ai--region-or-buffer ()
   "Return (beg end text lang) for active region or whole buffer."
@@ -157,8 +171,8 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
   "Prompts por modo mayor para IA.")
 
 (defun cursor-ai--system-prompt ()
-  (or (cdr (assoc-default major-mode cursor-ai-system-prompts
-                          (lambda (mode key) (derived-mode-p key))))
+  (or (assoc-default major-mode cursor-ai-system-prompts
+                     (lambda (_mode key) (derived-mode-p key)))
       (cdr (assoc 't cursor-ai-system-prompts))))
 
 (defun cursor-ai--send-with (instruction)
@@ -169,7 +183,7 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
                           (buffer-name))))
     (pcase-let ((`(_ _ ,text ,lang) (cursor-ai--region-or-buffer)))
       (cursor-ai--open-chat)
-      (with-current-buffer "*Cursor-Chat*"
+      (with-current-buffer cursor-ai--chat-buffer-name
         (setq-local gptel-system-message (cursor-ai--system-prompt))
         (gptel-send
          (format
@@ -204,9 +218,9 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
 (defun cursor-ai-apply-last-code-block ()
   "Apply the last ```code``` block from the chat to the buffer."
   (interactive)
-  (let* ((src (get-buffer "*Cursor-Chat*"))
+  (let* ((src (get-buffer cursor-ai--chat-buffer-name))
          (code nil))
-    (unless src (user-error "No hay *Cursor-Chat* con respuesta"))
+    (unless src (user-error "No hay %s con respuesta" cursor-ai--chat-buffer-name))
     (with-current-buffer src
       (save-excursion
         (goto-char (point-max))
@@ -217,6 +231,56 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
       (delete-region beg end)
       (insert code))))
 
+(defun cursor-ai-chatgpt-shell-send-buffer (&optional review)
+  "Send whole buffer to `chatgpt-shell'.
+With prefix REVIEW, prompt before submitting."
+  (interactive "P")
+  (save-restriction
+    (widen)
+    (if (= (point-min) (point-max))
+        (user-error "El buffer está vacío")
+      (save-excursion
+        (goto-char (point-min))
+        (push-mark (point-max) t t)
+        (let ((mark-active t)
+              (transient-mark-mode t))
+          (cursor-ai-chatgpt-shell-send-region review))))))
+
+(defun cursor-ai-chatgpt-shell (&optional new-session)
+  "Start `chatgpt-shell' using a supported model.
+With prefix NEW-SESSION, start a separate session."
+  (interactive "P")
+  (let ((model (or (cursor-ai--chatgpt-shell-default-model)
+                   chatgpt-shell-model-version)))
+    (chatgpt-shell-start nil new-session nil model)))
+
+(defun cursor-ai-chatgpt-shell-send-region (&optional review)
+  "Send active region to `chatgpt-shell' using a supported model.
+With prefix REVIEW, allow prompt editing before sending."
+  (interactive "P")
+  (unless (use-region-p)
+    (user-error "No hay región activa"))
+  (let ((chatgpt-shell-model-version
+         (or (cursor-ai--chatgpt-shell-default-model)
+             chatgpt-shell-model-version)))
+    (chatgpt-shell-send-region review)))
+
+(defun cursor-ai--chatgpt-shell-default-model ()
+  "Return a sensible model version available in `chatgpt-shell-models'."
+  (let* ((models (and (boundp 'chatgpt-shell-models) chatgpt-shell-models))
+         (versions (delq nil (mapcar (lambda (model) (alist-get :version model))
+                                     models)))
+         (preferred (seq-find (lambda (model) (member model versions))
+                              '("gpt-5-mini" "gpt-5" "gpt-5.1" "gpt-4.1-mini"
+                                "gpt-4o-mini")))
+         (openai-model (seq-find (lambda (model)
+                                   (string= (or (alist-get :provider model) "")
+                                            "OpenAI"))
+                                 models)))
+    (or preferred
+        (and openai-model (alist-get :version openai-model))
+        (car versions))))
+
 (define-key cursor-ai-map (kbd "c") #'cursor-ai--open-chat)
 (define-key cursor-ai-map (kbd "r") #'cursor-ai-refactor)
 (define-key cursor-ai-map (kbd "e") #'cursor-ai-explain)
@@ -224,6 +288,8 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
 (define-key cursor-ai-map (kbd "t") #'cursor-ai-tests)
 (define-key cursor-ai-map (kbd "a") #'cursor-ai-apply-last-code-block)
 (define-key cursor-ai-map (kbd "g") #'copilot-mode)
+;; Shell actions hang off C-c A s to avoid collisions with editing/search keys.
+(define-key cursor-ai-map (kbd "s") #'cursor-ai-shell-map)
 
 (with-eval-after-load 'which-key
   (which-key-add-keymap-based-replacements
@@ -235,11 +301,10 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
     "t" "Tests"
     "a" "Aplicar último bloque"
     "g" "Toggle Copilot"
+    "s" "Agent-shell actions"
     "p" "Enviar prompt (agent-shell)"
     "i" "Insertar en agent-shell"
-    "o" "Enviar región a agent-shell"))
-
-(with-eval-after-load 'which-key
+    "o" "Enviar región a agent-shell")
   (which-key-add-keymap-based-replacements
     cursor-ai-shell-map
     "a" "Abrir agent-shell"
@@ -247,7 +312,12 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
     "i" "Interrumpir"
     "v" "Ver tráfico"
     "l" "Ver logs ACP"
-    "r" "Resetear logs"))
+    "r" "Resetear logs")
+  (which-key-add-key-based-replacements
+    "C-c i" "AI Menu"
+    "C-c A" "AI Actions"
+    "C-c m" "AI Models"
+    "C-c A C" "ChatGPT"))
 
 (use-package acp
   :straight (acp :type git :host github :repo "xenodium/acp.el")
@@ -260,8 +330,8 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
 (use-package agent-shell
   :straight (agent-shell :type git :host github :repo "xenodium/agent-shell")
   :commands (agent-shell agent-shell-toggle agent-shell-interrupt
-                        agent-shell-view-traffic agent-shell-view-acp-logs
-                        agent-shell-reset-logs)
+                         agent-shell-view-traffic agent-shell-view-acp-logs
+                         agent-shell-reset-logs)
   :init
   (define-key cursor-ai-shell-map (kbd "a") #'agent-shell)
   (define-key cursor-ai-shell-map (kbd "t") #'agent-shell-toggle)
@@ -313,12 +383,13 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
          (file-name-as-directory (cursor-ai--state-path "cache" "chatgpt-shell"))))
     (make-directory chatgpt-shell-state-dir t)
     (setq shell-maker-root-path chatgpt-shell-state-dir))
-  :bind (("C-c c s" . chatgpt-shell)
-         ("C-c c r" . chatgpt-shell-send-region)
-         ("C-c c b" . chatgpt-shell-send-buffer))
+  :bind (("C-c A C-s" . cursor-ai-chatgpt-shell)
+         ("C-c A C-r" . cursor-ai-chatgpt-shell-send-region)
+         ("C-c A C-b" . cursor-ai-chatgpt-shell-send-buffer))
   :config
-  (setq chatgpt-shell-openai-key gptel-api-key
-        chatgpt-shell-model-version "gpt-4"))
+  (setq chatgpt-shell-openai-key gptel-api-key)
+  (when-let ((model (cursor-ai--chatgpt-shell-default-model)))
+    (setq chatgpt-shell-model-version model)))
 
 (use-package org-ai
   :straight (org-ai :type git :host github :repo "rksm/org-ai")
@@ -333,7 +404,7 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
 
 (use-package mcp-server
   :straight (:type git :host github :repo "rhblind/emacs-mcp-server"
-             :files ("*.el" "tools/*.el" "mcp-wrapper.py" "mcp-wrapper.sh"))
+		   :files ("*.el" "tools/*.el" "mcp-wrapper.py" "mcp-wrapper.sh"))
   :config
   (setq mcp-server-socket-directory "~/.emacs.d/.local/cache/")
 
@@ -344,14 +415,14 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
   ;; Mueve todas las funciones peligrosas a permitidas sin preguntar
   (setq mcp-server-security-allowed-dangerous-functions
         '(browse-url call-process copy-file delete-directory delete-file
-          dired eval find-file find-file-literally find-file-noselect
-          getenv insert-file-contents kill-emacs load make-directory
-          process-environment rename-file require save-buffers-kill-emacs
-          save-buffers-kill-terminal save-current-buffer server-force-delete
-          server-start set-buffer set-file-modes set-file-times shell-command
-          shell-command-to-string shell-environment start-process
-          switch-to-buffer url-retrieve url-retrieve-synchronously view-file
-          with-current-buffer write-region))
+		     dired eval find-file find-file-literally find-file-noselect
+		     getenv insert-file-contents kill-emacs load make-directory
+		     process-environment rename-file require save-buffers-kill-emacs
+		     save-buffers-kill-terminal save-current-buffer server-force-delete
+		     server-start set-buffer set-file-modes set-file-times shell-command
+		     shell-command-to-string shell-environment start-process
+		     switch-to-buffer url-retrieve url-retrieve-synchronously view-file
+		     with-current-buffer write-region))
 
   ;; Vacía la lista de funciones peligrosas (todas están en allowed ahora)
   (setq mcp-server-security-dangerous-functions nil)
@@ -412,7 +483,6 @@ Con prefijo SUBMIT, envía inmediatamente el contenido."
   "Gather lightweight project context for prompts."
   (let* ((project (project-current))
          (root (when project (project-root project)))
-         (files (when root (directory-files root nil "README\\|\\.md$" t)))
          (git-branch (when root
                        (with-temp-buffer
                          (when (zerop (call-process "git" nil t nil "branch" "--show-current"))
@@ -565,14 +635,6 @@ _o_: Org-AI                _i_: Improve Code        _h_: Search Docs+Ask    _l_:
   ("SPC" nil "quit" :color pink))
 
 (global-set-key (kbd "C-c i") #'hydra-ai-menu/body)
-
-(with-eval-after-load 'which-key
-  (which-key-add-key-based-replacements
-    "C-c i" "AI Menu"
-    "C-c a" "AI Actions"
-    "C-c m" "AI Models"
-    "C-c c" "ChatGPT"
-    "C-c s" "Agent Shell"))
 
 (provide 'ai-suite)
 

@@ -6,6 +6,8 @@
 
 ;;; Code:
 
+(require 'package)
+
 (setq inhibit-startup-message t
       use-dialog-box nil
       ring-bell-function #'ignore
@@ -14,6 +16,11 @@
 (defconst cursor-ai-state-directory
   (file-name-as-directory (expand-file-name "var" user-emacs-directory))
   "Root directory for cache, autosave and temporary Emacs data.")
+
+(defconst cursor-ai-package-archives
+  '(("melpa" . "https://melpa.org/packages/")
+    ("melpa-stable" . "https://stable.melpa.org/packages/"))
+  "Package archives enabled for package.el bootstrap.")
 
 (defun cursor-ai--state-path (&rest segments)
   "Return absolute path inside `cursor-ai-state-directory' for SEGMENTS."
@@ -58,6 +65,10 @@
 
 (setq straight-base-dir (cursor-ai--state-path "straight")
       package-user-dir (cursor-ai--state-path "elpa"))
+
+(dolist (archive cursor-ai-package-archives)
+  (add-to-list 'package-archives archive t))
+(package-initialize)
 
 (unless (package-installed-p 'use-package)
   (package-refresh-contents)

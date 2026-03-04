@@ -12,6 +12,7 @@
 (declare-function dirvish-peek-mode "dirvish-peek" (&optional arg))
 (declare-function dirvish-side-follow-mode "dirvish-side" (&optional arg))
 (declare-function dired-get-file-for-visit "dired" (&optional no-error))
+(declare-function cursor-ai/delete-other-windows-all "modal-editing" (&optional window))
 
 (defvar cursor-ai--dirvish-preview-window nil
   "Window reserved for Dirvish previews triggered from completion UIs.")
@@ -146,7 +147,9 @@ When FILE is nil try to infer it from context before prompting."
   (when (fboundp 'dirvish-side-follow-mode)
     (dirvish-side-follow-mode 1))
   (with-eval-after-load 'consult
-    (consult-customize consult-buffer :preview-key 'any)
+    ;; `consult-customize' is a macro; evaluate it at runtime after Consult
+    ;; loads so byte-compiled configs do not treat `consult-buffer' as a var.
+    (eval '(consult-customize consult-buffer :preview-key 'any))
     (dolist (source '(consult--source-buffer
                       consult--source-hidden-buffer
                       consult--source-project-buffer))
@@ -177,9 +180,29 @@ When FILE is nil try to infer it from context before prompting."
 (use-package treemacs-magit
   :after (treemacs magit))
 
+(defun cursor-ai--vterm-fullscreen-advice (&rest _)
+  "Keep interactive `vterm' sessions in a single-window layout."
+  (when (and (called-interactively-p 'interactive)
+             (derived-mode-p 'vterm-mode))
+    (if (fboundp 'cursor-ai/delete-other-windows-all)
+        (cursor-ai/delete-other-windows-all)
+      (delete-other-windows))))
+
+(defun cursor-ai/vterm-fullscreen (&optional arg)
+  "Open `vterm' and maximize it to a single window.
+Pass ARG to `vterm'."
+  (interactive "P")
+  (vterm arg)
+  (if (fboundp 'cursor-ai/delete-other-windows-all)
+      (cursor-ai/delete-other-windows-all)
+    (delete-other-windows)))
+
 (use-package vterm
   :commands vterm
-  :bind (("C-`" . vterm)))
+  :bind (("C-`" . cursor-ai/vterm-fullscreen))
+  :config
+  (define-key vterm-mode-map (kbd "C-x 1") #'cursor-ai/delete-other-windows-all)
+  (advice-add 'vterm :after #'cursor-ai--vterm-fullscreen-advice))
 
 (use-package projectile
   :init (projectile-mode +1)
@@ -195,6 +218,56 @@ When FILE is nil try to infer it from context before prompting."
   (setq projectile-completion-system 'default
         projectile-enable-caching t
         projectile-indexing-method 'alien))
+
+(use-package winner
+  :straight nil
+  :init
+  (winner-mode 1))
+
+(use-package recentf
+  :straight nil
+  :init
+  (setq recentf-max-saved-items 500
+        recentf-max-menu-items 50
+        recentf-auto-cleanup 'never)
+  :config
+  (dolist (entry (list (regexp-quote cursor-ai-state-directory)
+                       "^/tmp/"
+                       "^/sudo:"
+                       "^/ssh:"))
+    (add-to-list 'recentf-exclude entry))
+  (recentf-mode 1)
+  (run-at-time nil (* 5 60) #'recentf-save-list))
+
+(use-package savehist
+  :straight nil
+  :init
+  (setq history-length 300
+        savehist-additional-variables
+        '(kill-ring search-ring regexp-search-ring))
+  :config
+  (savehist-mode 1))
+
+(use-package saveplace
+  :straight nil
+  :config
+  (save-place-mode 1))
+
+(use-package desktop
+  :straight nil
+  :init
+  (let ((desktop-dir (cursor-ai--state-path "desktop")))
+    (make-directory desktop-dir t)
+    (setq desktop-dirname desktop-dir
+          desktop-path (list desktop-dir)
+          desktop-base-file-name "emacs-desktop"
+          desktop-base-lock-name "emacs-desktop.lock"
+          desktop-load-locked-desktop t
+          desktop-save t
+          desktop-auto-save-timeout 300
+          desktop-restore-eager 5))
+  :config
+  (desktop-save-mode 1))
 
 (use-package persp-mode
   :init

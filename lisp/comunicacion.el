@@ -7,6 +7,8 @@
 
 ;;; Code:
 
+(require 'core-bootstrap)
+
 ;;;; Gmail - mu4e
 ;; Cliente de email para Emacs basado en mu (maildir utils)
 
@@ -79,7 +81,6 @@
 ;; Cliente de Telegram para Emacs
 
 (use-package telega
-  :ensure t
   :defer t
   :commands (telega)
   :config
@@ -118,7 +119,6 @@
 
 ;; Rainbow mode para Telega (colores en los mensajes)
 (use-package rainbow-mode
-  :ensure t
   :hook (telega-chat-mode . rainbow-mode))
 
 ;;;; Configuración de autenticación
@@ -129,8 +129,10 @@
 ;; Para Telegram: telega te pedirá tu número de teléfono y código la primera vez
 
 ;;;; Keybindings globales
-(global-set-key (kbd "C-c m") 'mu4e)
-(global-set-key (kbd "C-c t") 'telega)
+;; Keep communication entry points on C-c C-* so AI/model prefixes under C-c m
+;; remain available.
+(global-set-key (kbd "C-c C-m") #'mu4e)
+(global-set-key (kbd "C-c C-t") #'telega)
 
 (provide 'comunicacion)
 ;;; comunicacion.el ends here

@@ -41,7 +41,11 @@
   :init (vertico-mode 1))
 
 (use-package orderless
-  :custom (completion-styles '(orderless basic)))
+  :custom
+  (completion-styles '(orderless basic))
+  (completion-category-defaults nil)
+  (completion-category-overrides
+   '((file (styles basic partial-completion)))))
 
 (use-package marginalia
   :init (marginalia-mode 1))
@@ -52,6 +56,17 @@
          ("C-c g" . consult-git-grep)
          ("C-c r" . consult-ripgrep))
   :hook (completion-list-mode . consult-preview-at-point-mode))
+
+(use-package embark
+  :bind (("C-." . embark-act)
+         ("C-c ." . embark-dwim)
+         ("C-h B" . embark-bindings))
+  :init
+  (setq prefix-help-command 'embark-prefix-help-command))
+
+(use-package embark-consult
+  :after (embark consult)
+  :hook (embark-collect-mode . consult-preview-at-point-mode))
 
 (use-package lsp-mode
   :hook ((java-mode . lsp-deferred)
@@ -165,15 +180,24 @@
 
 (use-package yasnippet
   :config
+  (defun cursor-ai--yas-normalize-directory (dir)
+    "Resolve DIR to an absolute snippet directory path or nil."
+    (let ((value (cond
+                  ((symbolp dir)
+                   (and (boundp dir) (symbol-value dir)))
+                  (t dir))))
+      (when (stringp value)
+        (if (file-name-absolute-p value)
+            value
+          (expand-file-name value user-emacs-directory)))))
+
   (defun cursor-ai--yas-add-directories (&rest dirs)
     (setq yas-snippet-dirs (or yas-snippet-dirs '()))
     (dolist (dir dirs)
-      (when dir
-        (let ((entry (if (and (stringp dir) (not (file-name-absolute-p dir)))
-                         (expand-file-name dir user-emacs-directory)
-                       dir)))
+      (when-let ((entry (cursor-ai--yas-normalize-directory dir)))
+        (unless (member entry yas-snippet-dirs)
           (setq yas-snippet-dirs
-                (delete-dups (append yas-snippet-dirs (list entry))))))))
+                (append yas-snippet-dirs (list entry)))))))
 
   (setq yas-snippet-dirs nil)
   (let ((local-snippets (expand-file-name "snippets" user-emacs-directory)))
@@ -188,24 +212,27 @@
   (yasnippet-snippets-initialize)
   (cursor-ai--yas-add-directories 'yasnippet-snippets-dir))
 
-(defun move-text-up ()
+(defun cursor-ai/move-text-up ()
   "Move the current line one position up."
   (interactive)
   (transpose-lines 1)
   (forward-line -2))
 
-(defun move-text-down ()
+(defun cursor-ai/move-text-down ()
   "Move the current line one position down."
   (interactive)
   (forward-line 1)
   (transpose-lines 1)
   (forward-line -1))
 
-(global-set-key (kbd "M-<up>") #'move-text-up)
-(global-set-key (kbd "M-<down>") #'move-text-down)
+(defalias 'move-text-up #'cursor-ai/move-text-up)
+(defalias 'move-text-down #'cursor-ai/move-text-down)
+
+(global-set-key (kbd "M-<up>") #'cursor-ai/move-text-up)
+(global-set-key (kbd "M-<down>") #'cursor-ai/move-text-down)
 (global-set-key (kbd "C-;") #'comment-line)
 
-(defun duplicate-line ()
+(defun cursor-ai/duplicate-line ()
   "Duplicate the current line preserving cursor column."
   (interactive)
   (let ((column (- (point) (line-beginning-position)))
@@ -217,7 +244,9 @@
     (move-beginning-of-line 1)
     (forward-char column)))
 
-(global-set-key (kbd "C-S-d") #'duplicate-line)
+(defalias 'duplicate-line #'cursor-ai/duplicate-line)
+
+(global-set-key (kbd "C-S-d") #'cursor-ai/duplicate-line)
 (global-set-key (kbd "C-=") #'text-scale-increase)
 (global-set-key (kbd "C--") #'text-scale-decrease)
 

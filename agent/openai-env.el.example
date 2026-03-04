@@ -1,0 +1,13 @@
+;;; openai-env.el --- Local OPENAI_API_KEY loader -*- lexical-binding: t; -*-
+
+;;; Commentary:
+;; Copy this file to `agent/openai-env.el` and place your real key there.
+;; `init.el` loads `agent/openai-env.el` automatically when it exists.
+
+;;; Code:
+
+(setenv "OPENAI_API_KEY" "YOUR_OPENAI_API_KEY_HERE")
+
+(provide 'openai-env)
+
+;;; openai-env.el ends here

@@ -132,9 +132,6 @@
              lsp-treemacs-symbols
              lsp-treemacs-errors-list
              lsp-treemacs-java-deps-list)
-  :custom
-  (lsp-treemacs-sync-mode 1)
-
   :config
   ;; Sync treemacs with project changes
   (lsp-treemacs-sync-mode 1)
@@ -247,32 +244,19 @@
 
 ;;; Additional Eclipse-like features
 
-;; Auto-save configuration (like Eclipse auto-save)
-(add-hook 'java-mode-hook
-          (lambda ()
-            (setq-local auto-save-visited-mode t)
-            (auto-save-visited-mode 1)))
-
-;; Show trailing whitespace (Eclipse shows this)
-(add-hook 'java-mode-hook
-          (lambda ()
-            (setq show-trailing-whitespace t)))
-
-;; Electric pair mode for auto-closing brackets (Eclipse does this)
-(add-hook 'java-mode-hook #'electric-pair-local-mode)
-
-;; Subword mode for camelCase navigation (Eclipse has this)
-(add-hook 'java-mode-hook #'subword-mode)
-
-;; Highlight current line in Java files
-(add-hook 'java-mode-hook #'hl-line-mode)
-
-;; Display line numbers (Eclipse shows these)
-(add-hook 'java-mode-hook #'display-line-numbers-mode)
-
 ;;; Custom functions
 
-(defun my/java-run-main ()
+(defun cursor-ai/java-mode-defaults ()
+  "Enable default buffer-local quality-of-life settings for Java."
+  (setq-local auto-save-visited-mode t
+              show-trailing-whitespace t)
+  (auto-save-visited-mode 1)
+  (electric-pair-local-mode 1)
+  (subword-mode 1)
+  (hl-line-mode 1)
+  (display-line-numbers-mode 1))
+
+(defun cursor-ai/java-run-main ()
   "Run the main class of the current Java project."
   (interactive)
   (let ((project-type (projectile-project-type)))
@@ -281,7 +265,9 @@
       ('gradle (compile "gradle bootRun"))
       (_ (message "Unknown project type. Please configure run command.")))))
 
-(defun my/java-run-tests ()
+(defalias 'my/java-run-main #'cursor-ai/java-run-main)
+
+(defun cursor-ai/java-run-tests ()
   "Run all tests in the current Java project."
   (interactive)
   (let ((project-type (projectile-project-type)))
@@ -290,23 +276,25 @@
       ('gradle (compile "gradle test"))
       (_ (message "Unknown project type. Please configure test command.")))))
 
-(defun my/java-mode-setup-keys ()
+(defalias 'my/java-run-tests #'cursor-ai/java-run-tests)
+
+(defun cursor-ai/java-mode-setup-keys ()
   "Keybindings for Java buffers."
   (local-set-key (kbd "C-c C-o") #'lsp-java-organize-imports)
   (local-set-key (kbd "C-c C-b") #'lsp-java-build-project)
   (local-set-key (kbd "C-c C-r") #'lsp-rename)
   (local-set-key (kbd "C-c C-f") #'lsp-format-buffer)
   (local-set-key (kbd "C-c j") #'hydra-lsp-java/body)
-  (local-set-key (kbd "C-c C-x r") #'my/java-run-main)
-  (local-set-key (kbd "C-c C-x t") #'my/java-run-tests)
+  (local-set-key (kbd "C-c C-x r") #'cursor-ai/java-run-main)
+  (local-set-key (kbd "C-c C-x t") #'cursor-ai/java-run-tests)
   (when (fboundp 'lsp-jt-browser)
     (local-set-key (kbd "C-c t t") #'lsp-jt-browser)
     (local-set-key (kbd "C-c t r") #'lsp-jt-report-open)))
 
-(add-hook 'java-mode-hook #'my/java-mode-setup-keys)
+(defalias 'my/java-mode-setup-keys #'cursor-ai/java-mode-setup-keys)
 
-;;; Message on successful load
-(message "LSP Java configuration loaded successfully. Eclipse-like IDE ready!")
+(add-hook 'java-mode-hook #'cursor-ai/java-mode-defaults)
+(add-hook 'java-mode-hook #'cursor-ai/java-mode-setup-keys)
 
 (provide 'lsp-java)
 

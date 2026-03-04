@@ -18,7 +18,7 @@
 (column-number-mode 1)
 
 (add-to-list 'default-frame-alist '(fullscreen . fullboth))
-(add-hook 'window-setup-hook (lambda () (toggle-frame-fullscreen)))
+(add-to-list 'initial-frame-alist '(fullscreen . fullboth))
 
 (use-package vscode-dark-plus-theme)
 
@@ -31,12 +31,6 @@
 
 (use-package which-key
   :init (which-key-mode 1))
-
-;;   (key-chord-define-global "dn" #'ace-window)
-;;   (key-chord-define-global "dh" #'golden-ratio)
-;;   (key-chord-define-global "ao" #'hide-mode-line-mode)
-;; TODO agrega  use-package de cada uno
-
 
 (tab-bar-mode 1)
 (setq tab-bar-show 1
@@ -56,6 +50,116 @@
       scroll-step 1
       scroll-conservatively 10000
       scroll-preserve-screen-position 1)
+
+(defun cursor-ai--find-managed-window (param)
+  "Return the first live window tagged with PARAM."
+  (let* ((non-side-windows
+          (seq-filter (lambda (win)
+                        (and (window-live-p win)
+                             (not (window-parameter win 'window-side))))
+                      (window-list nil 'nomini)))
+         (managed
+          (seq-find (lambda (win) (window-parameter win param))
+                    non-side-windows)))
+    ;; If only one non-side window remains, don't treat it as managed.
+    (when (and managed (<= (length non-side-windows) 1))
+      (set-window-parameter managed param nil)
+      (setq managed nil))
+    managed))
+
+(defun cursor-ai--main-non-side-window ()
+  "Return the preferred non-side window to keep as primary editing area."
+  (or (seq-find (lambda (win)
+                  (and (window-live-p win)
+                       (not (window-parameter win 'window-side))
+                       (not (window-parameter win 'cursor-ai-repl-window))
+                       (not (window-parameter win 'cursor-ai-aux-window))))
+                (window-list nil 'nomini))
+      (seq-find (lambda (win)
+                  (and (window-live-p win)
+                       (not (window-parameter win 'window-side))))
+                (window-list nil 'nomini))
+      (selected-window)))
+
+(defun cursor-ai--display-in-managed-bottom-window (buffer alist param default-height)
+  "Display BUFFER in a reusable managed bottom window.
+ALIST controls `window-height'. PARAM marks the managed window.
+DEFAULT-HEIGHT is used when ALIST doesn't provide `window-height'."
+  (let ((win (cursor-ai--find-managed-window param))
+        (height (or (alist-get 'window-height alist) default-height)))
+    (if (window-live-p win)
+        (progn
+          (set-window-buffer win buffer)
+          win)
+      (let* ((anchor (cursor-ai--main-non-side-window))
+             (total-height (window-total-height anchor))
+             (min-height (max window-min-height 8))
+             (target-height (max min-height
+                                 (min (- total-height min-height)
+                                      (floor (* total-height height)))))
+             (upper-height (max min-height (- total-height target-height)))
+             (new-win (or (ignore-errors
+                            (split-window anchor upper-height 'below))
+                          anchor)))
+        (when (window-live-p new-win)
+          (set-window-buffer new-win buffer)
+          (set-window-dedicated-p new-win nil)
+          (set-window-parameter new-win param t))
+        new-win))))
+
+(defun cursor-ai--display-repl-window (buffer alist)
+  "Display BUFFER in the managed REPL bottom window."
+  (cursor-ai--display-in-managed-bottom-window
+   buffer alist 'cursor-ai-repl-window 0.30))
+
+(defun cursor-ai--display-aux-window (buffer alist)
+  "Display BUFFER in the managed auxiliary bottom window."
+  (cursor-ai--display-in-managed-bottom-window
+   buffer alist 'cursor-ai-aux-window 0.26))
+
+(defun cursor-ai--repl-or-chat-buffer-p (buffer-name _action)
+  "Return non-nil when BUFFER-NAME corresponds to a REPL/chat style buffer."
+  (when-let ((buffer (get-buffer buffer-name)))
+    (with-current-buffer buffer
+      (or (derived-mode-p 'comint-mode 'eshell-mode 'shell-mode 'term-mode 'vterm-mode)
+          (memq major-mode '(ielm-mode
+                             inferior-emacs-lisp-mode
+                             inferior-python-mode
+                             sql-interactive-mode
+                             chatgpt-shell-mode
+                             gptel-mode
+                             agent-shell-mode))
+          (string-match-p
+           "\\`\\*\\(Cursor-Chat\\|MCP Tools\\|AI-[^*]*\\|chatgpt.*\\|.* llm .*\\)\\*\\'"
+           buffer-name)
+          (string-prefix-p "Claude Code Agent @ " buffer-name)))))
+
+;; Vertical monitor defaults:
+;; - Sidebars (Treemacs/Dirvish) stay left.
+;; - REPLs and diagnostics open in normal bottom windows so `C-x 1` can close them.
+(setq display-buffer-alist
+      '(("\\*\\(Treemacs-.*\\)\\*"
+         (display-buffer-reuse-window display-buffer-in-side-window)
+         (side . left)
+         (slot . 0)
+         (window-width . 0.20))
+        ("\\*\\(dirvish\\(?:-side\\)?\\)\\*"
+         (display-buffer-reuse-window display-buffer-in-side-window)
+         (side . left)
+         (slot . 1)
+         (window-width . 0.24))
+        (cursor-ai--repl-or-chat-buffer-p
+         (display-buffer-reuse-window cursor-ai--display-repl-window)
+         (window-height . 0.30)
+         (slot . 0))
+        ("\\*\\(Warnings\\|Backtrace\\|Messages\\|Compile-Log\\|compilation\\|Async Shell Command\\|Occur\\|xref\\|grep\\|Help\\|Apropos\\|lsp.*\\|Flymake diagnostics.*\\|Flycheck errors.*\\|Embark Collect.*\\|Completions\\)\\*"
+         (display-buffer-reuse-window cursor-ai--display-aux-window)
+         (window-height . 0.24)
+         (slot . 1))
+        ("\\*\\(magit:.*\\|magit-.*\\|\\(?:.*\\)\\s-*revision\\)\\*"
+         (display-buffer-reuse-window cursor-ai--display-aux-window)
+         (window-height . 0.26)
+         (slot . 2))))
 
 (require 'uniquify)
 (setq uniquify-buffer-name-style 'forward)
