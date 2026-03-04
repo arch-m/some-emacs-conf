@@ -13,6 +13,9 @@
 (declare-function dirvish-side-follow-mode "dirvish-side" (&optional arg))
 (declare-function dired-get-file-for-visit "dired" (&optional no-error))
 (declare-function cursor-ai/delete-other-windows-all "modal-editing" (&optional window))
+(declare-function ediff-setup-windows-plain "ediff-wind" ())
+
+(defvar ediff-window-setup-function)
 
 (defvar cursor-ai--dirvish-preview-window nil
   "Window reserved for Dirvish previews triggered from completion UIs.")
@@ -93,15 +96,15 @@ specialisations (e.g. on older builds) by running the usual setup hook."
         (goto-char (point-min)))
       buffer))
 
-(defun preview-file (&optional file)
-  "Preview FILE using Dirvish' preview pipeline.
+  (defun preview-file (&optional file)
+    "Preview FILE using Dirvish' preview pipeline.
 When FILE is nil try to infer it from context before prompting."
-  (interactive)
-  (let ((target (or file
-                    (and (derived-mode-p 'dired-mode)
-                         (dired-get-file-for-visit))
-                    (buffer-file-name)
-                    (read-file-name "Previsualizar archivo: " nil nil t)))))
+    (interactive)
+    (let ((target (or file
+                      (and (derived-mode-p 'dired-mode)
+                           (dired-get-file-for-visit))
+                      (buffer-file-name)
+                      (read-file-name "Previsualizar archivo: " nil nil t)))))
     (cursor-ai--dirvish-preview-display target)))
 
 (defun cursor-ai-close-preview ()
@@ -156,8 +159,8 @@ When FILE is nil try to infer it from context before prompting."
       (when (boundp source)
         (setf (plist-get (symbol-value source) :state)
               #'cursor-ai--consult-buffer-state)))))
-  (unless (advice-member-p #'cursor-ai--dirvish-data-fallback 'dirvish-data-for-dir)
-    (advice-add 'dirvish-data-for-dir :around #'cursor-ai--dirvish-data-fallback))
+(unless (advice-member-p #'cursor-ai--dirvish-data-fallback 'dirvish-data-for-dir)
+  (advice-add 'dirvish-data-for-dir :around #'cursor-ai--dirvish-data-fallback))
 
 (use-package treemacs
   :bind (("C-c e" . treemacs)
@@ -292,6 +295,33 @@ Pass ARG to `vterm'."
      ("https://k8s.io/docs/reference/issues-security/official-cve-feed/feed.xml"
       infra security kubernetes))))
 
+(use-package webjump
+  :straight nil
+  :commands (webjump)
+  :init
+  (defun cursor-ai--register-webjump-sites ()
+    "Register custom Webjump shortcuts."
+    (dolist (name '("Arch Linux Packages (name)"
+                    "Arch Linux Packages (search)"
+                    "AUR Packages"
+                    "Pacman Packages"))
+      (setq webjump-sites (assoc-delete-all name webjump-sites)))
+    (dolist (site '(("AUR Packages"
+                     . [simple-query
+                        "https://aur.archlinux.org/packages"
+                        "https://aur.archlinux.org/packages?O=0&K="
+                        ""])
+                    ("Pacman Packages"
+                     . [simple-query
+                        "https://archlinux.org/packages/"
+                        "https://archlinux.org/packages/?name="
+                        ""])))
+      (add-to-list 'webjump-sites site t)))
+  (if (featurep 'webjump)
+      (cursor-ai--register-webjump-sites)
+    (with-eval-after-load 'webjump
+      (cursor-ai--register-webjump-sites))))
+
 (use-package transient
   :demand t)
 
@@ -308,14 +338,60 @@ Pass ARG to `vterm'."
 (define-key magit-prefix-map (kbd "m") #'magit-merge)
 (define-key magit-prefix-map (kbd "a") #'magit-stage)
 (define-key magit-prefix-map (kbd "u") #'magit-unstage)
+(define-key magit-prefix-map (kbd "t") #'git-timemachine-toggle)
+(define-key magit-prefix-map (kbd "o") #'browse-at-remote)
+(define-key magit-prefix-map (kbd "O") #'browse-at-remote-kill)
+(define-key magit-prefix-map (kbd "n") #'diff-hl-next-hunk)
+(define-key magit-prefix-map (kbd "N") #'diff-hl-previous-hunk)
+(define-key magit-prefix-map (kbd "R") #'diff-hl-revert-hunk)
 
 (use-package magit
   :after transient
   :bind (("C-x g" . magit-prefix-map)
          ("C-c v" . magit-status))
+  :hook ((magit-status-section-hook . 'magit-insert-tracked-files))
   :config
   (setq magit-display-buffer-function
-        #'magit-display-buffer-same-window-except-diff-v1))
+        #'magit-display-buffer-same-window-except-diff-v1)
+  (with-eval-after-load 'ediff
+    (setq ediff-window-setup-function #'ediff-setup-windows-plain)))
+
+(use-package magit-todos
+  :after magit
+  :config
+  (magit-todos-mode 1))
+
+(use-package forge
+  :after magit
+  :commands (forge-dispatch forge-pull))
+
+(use-package git-link
+  :commands (git-link git-link-commit))
+
+(use-package browse-at-remote
+  :straight (browse-at-remote :type git :host github :repo "rmuslimov/browse-at-remote")
+  :commands (browse-at-remote browse-at-remote-kill))
+
+(use-package git-timemachine
+  :straight (git-timemachine :type git :host github :repo "emacsmirror/git-timemachine")
+  :commands (git-timemachine git-timemachine-toggle))
+
+(use-package ghub
+  :defer t)
+
+(use-package diff-hl
+  :commands (diff-hl-next-hunk diff-hl-previous-hunk diff-hl-revert-hunk)
+  :hook ((prog-mode . diff-hl-mode)
+         (dired-mode . diff-hl-dired-mode)
+         (magit-post-refresh . diff-hl-magit-post-refresh)
+	 (flymake-mode . diff-hl-flydiff-mode))
+  :custom
+  (diff-hl-margin-mode t)
+  (diff-hl-side 'right)
+  :custom-face
+  (diff-hl-insert ((t (:background nil :inherit nil))))
+  (diff-hl-delete ((t (:background nil :inherit nil))))
+  (diff-hl-change ((t (:background nil :inherit nil)))))
 
 (provide 'tools-config)
 

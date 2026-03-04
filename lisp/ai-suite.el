@@ -11,6 +11,19 @@
 (require 'projectile nil t)
 (require 'seq)
 
+(defvar copilot-max-char 100000
+  "Fallback Copilot max character limit used before `copilot' loads.")
+(defvar copilot-max-char-warning-disable nil
+  "Fallback toggle for Copilot large-buffer warnings.")
+(defvar copilot-indent-offset-warning-disable nil
+  "Fallback toggle for Copilot indentation warnings.")
+
+(defun cursor-ai--copilot-buffer-size-ok-p ()
+  "Return non-nil when current buffer is within Copilot size budget."
+  (let ((limit (if (boundp 'copilot-max-char) copilot-max-char 100000)))
+    (or (< limit 0)
+        (<= (buffer-size) limit))))
+
 (use-package gptel
   :config
   (require 'auth-source nil t)
@@ -33,15 +46,24 @@
 (use-package copilot
   :hook ((prog-mode . copilot-mode)
          (text-mode . copilot-mode))
+  :init
+  (setq copilot-max-char 200000
+        copilot-max-char-warning-disable t
+        copilot-indent-offset-warning-disable t)
   :custom
   (copilot-enable-predicates '(cursor-ai--copilot-typing-state-p
+                               cursor-ai--copilot-buffer-size-ok-p
                                copilot--buffer-changed
                                cursor-ai--copilot-input-sufficient-p))
   :bind (:map copilot-completion-map
               ("<tab>" . copilot-accept-completion)
               ("TAB"   . copilot-accept-completion)
               ("C-<tab>" . copilot-accept-completion-by-word)
-              ("M-<tab>" . copilot-accept-completion-by-line)))
+              ("M-<tab>" . copilot-accept-completion-by-line))
+  :config
+  (dolist (entry '((prog-mode standard-indent)
+                   (text-mode standard-indent)))
+    (add-to-list 'copilot-indentation-alist entry)))
 
 (defun cursor-ai--copilot-input-sufficient-p ()
   "Return t when current line has more than three non-whitespace chars before point."
@@ -600,10 +622,10 @@ With prefix REVIEW, allow prompt editing before sending."
        (format "Pregunta: %s\n\nContexto de la documentación:\n```\n%s\n```\n\nResponde basándote en este contexto."
                query search-results)))))
 
-(use-package hydra)
-
-(defhydra hydra-ai-menu (:color blue :hint nil)
-  "
+(use-package hydra
+  :config
+  (defhydra hydra-ai-menu (:color blue :hint nil)
+    "
 ^Chat/Interacción^         ^Code Actions^           ^Análisis^              ^Tools/Agentes^
 ^^^^^^^^---------------------------------------------------------------------------------------
 _c_: Cursor Chat           _r_: Refactor            _p_: Analyze Project    _m_: Start MCP Server
@@ -613,28 +635,27 @@ _o_: Org-AI                _i_: Improve Code        _h_: Search Docs+Ask    _l_:
 ^^                         _x_: Code Architect      ^^                      _q_: GPTel with MCP
 ^^                         _n_: Apply Last Block    ^^                      ^^
 "
-  ("c" cursor-ai--open-chat)
-  ("e" ellama-chat)
-  ("g" chatgpt-shell)
-  ("o" org-ai-prompt)
-  ("r" cursor-ai-refactor)
-  ("d" cursor-ai-docstring)
-  ("t" ai-generate-comprehensive-tests)
-  ("i" ellama-improve-wording)
-  ("x" ai-code-architect)
-  ("n" cursor-ai-apply-last-code-block)
-  ("p" ai-analyze-project)
-  ("v" ai-multi-agent-review)
-  ("b" ai-debug-assistant)
-  ("h" ai-search-docs-and-ask)
-  ("m" mcp-start-server)
-  ("s" agent-shell)
-  ("a" ai-agent-task)
-  ("l" mcp-list-tools)
-  ("q" gptel-with-mcp)
-  ("SPC" nil "quit" :color pink))
-
-(global-set-key (kbd "C-c i") #'hydra-ai-menu/body)
+    ("c" cursor-ai--open-chat)
+    ("e" ellama-chat)
+    ("g" chatgpt-shell)
+    ("o" org-ai-prompt)
+    ("r" cursor-ai-refactor)
+    ("d" cursor-ai-docstring)
+    ("t" ai-generate-comprehensive-tests)
+    ("i" ellama-improve-wording)
+    ("x" ai-code-architect)
+    ("n" cursor-ai-apply-last-code-block)
+    ("p" ai-analyze-project)
+    ("v" ai-multi-agent-review)
+    ("b" ai-debug-assistant)
+    ("h" ai-search-docs-and-ask)
+    ("m" mcp-start-server)
+    ("s" agent-shell)
+    ("a" ai-agent-task)
+    ("l" mcp-list-tools)
+    ("q" gptel-with-mcp)
+    ("SPC" nil "quit" :color pink))
+  (global-set-key (kbd "C-c i") #'hydra-ai-menu/body))
 
 (provide 'ai-suite)
 

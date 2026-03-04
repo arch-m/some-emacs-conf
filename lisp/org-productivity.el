@@ -13,6 +13,7 @@
 (use-package org
   :ensure nil
   :mode ("\\.org\\'" . org-mode)
+  :hook ((org-mode . visual-line-mode))
   :init
   (setq org-directory "~/org"
         org-default-notes-file "~/org/inbox.org"

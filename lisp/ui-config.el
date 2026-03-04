@@ -117,6 +117,36 @@ DEFAULT-HEIGHT is used when ALIST doesn't provide `window-height'."
   (cursor-ai--display-in-managed-bottom-window
    buffer alist 'cursor-ai-aux-window 0.26))
 
+(defun cursor-ai--display-fullframe-same-window (buffer _alist)
+  "Display BUFFER in the primary non-side window.
+
+When BUFFER is a Magit diff and a with-editor buffer is visible, avoid
+maximizing so the commit message window remains available."
+  (let* ((magit-diff-target
+          (with-current-buffer buffer
+            (derived-mode-p 'magit-diff-mode)))
+         (with-editor-visible
+          (seq-some
+           (lambda (window)
+             (with-current-buffer (window-buffer window)
+               (bound-and-true-p with-editor-mode)))
+           (window-list nil 'nomini)))
+         (win (or (cursor-ai--main-non-side-window) (selected-window))))
+    (when (window-live-p win)
+      (set-window-buffer win buffer)
+      (set-window-dedicated-p win nil)
+      (unless (and magit-diff-target with-editor-visible)
+        (delete-other-windows win))
+      win)))
+
+(defun cursor-ai--magit-diff-or-ediff-buffer-p (buffer-name _action)
+  "Return non-nil when BUFFER-NAME is a Magit diff or Ediff control buffer."
+  (when-let ((buffer (get-buffer buffer-name)))
+    (with-current-buffer buffer
+      (or (derived-mode-p 'magit-diff-mode)
+          (eq major-mode 'ediff-meta-mode)
+          (string-match-p "\\`\\*\\(?:[Ee]diff\\|magit-diff:\\)" buffer-name)))))
+
 (defun cursor-ai--repl-or-chat-buffer-p (buffer-name _action)
   "Return non-nil when BUFFER-NAME corresponds to a REPL/chat style buffer."
   (when-let ((buffer (get-buffer buffer-name)))
@@ -138,7 +168,11 @@ DEFAULT-HEIGHT is used when ALIST doesn't provide `window-height'."
 ;; - Sidebars (Treemacs/Dirvish) stay left.
 ;; - REPLs and diagnostics open in normal bottom windows so `C-x 1` can close them.
 (setq display-buffer-alist
-      '(("\\*\\(Treemacs-.*\\)\\*"
+      '((cursor-ai--magit-diff-or-ediff-buffer-p
+         (cursor-ai--display-fullframe-same-window)
+         (reusable-frames . nil)
+         (inhibit-switch-frame . t))
+        ("\\*\\(Treemacs-.*\\)\\*"
          (display-buffer-reuse-window display-buffer-in-side-window)
          (side . left)
          (slot . 0)

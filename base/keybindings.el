@@ -24,23 +24,23 @@ Each element is a cons cell: (KBD . COMMAND)."
   (dolist (binding bindings)
     (global-set-key (kbd (car binding)) (cdr binding))))
 
+(defun cursor-ai--key-chord-define-map (keys map &optional fallback feature)
+  "Bind KEYS to MAP when available, otherwise use FALLBACK.
+When FEATURE is non-nil, retry after FEATURE loads."
+  (if (boundp map)
+      (key-chord-define-global keys (symbol-value map))
+    (when fallback
+      (key-chord-define-global keys fallback))
+    (when feature
+      (with-eval-after-load feature
+        (when (boundp map)
+          (key-chord-define-global keys (symbol-value map)))))))
+
 (use-package key-chord
   :init
   (key-chord-mode 1)
   (setq key-chord-two-keys-delay 0.05)
   :config
-  (defun cursor-ai--key-chord-define-map (keys map &optional fallback feature)
-    "Bind KEYS to MAP when available, otherwise use FALLBACK.
-When FEATURE is non-nil, retry after FEATURE loads."
-    (if (boundp map)
-        (key-chord-define-global keys (symbol-value map))
-      (when fallback
-        (key-chord-define-global keys fallback))
-      (when feature
-        (with-eval-after-load feature
-          (when (boundp map)
-            (key-chord-define-global keys (symbol-value map)))))))
-
   (dolist (binding '(("tn" . other-window)
                      ("dn" . ace-window)
                      ("dh" . golden-ratio)
@@ -92,6 +92,7 @@ When FEATURE is non-nil, retry after FEATURE loads."
    ("s-C-q" . kill-some-buffer)
    ("s-n" . narrow-to-defun)
    ("s-e" . widen)
+   ("s-j" . webjump)
    ("s-s" . consult-line)
    ("s-r" . consult-ripgrep)))
 

@@ -6,6 +6,8 @@
 
 ;;; Code:
 
+(setq package-enable-at-startup nil)
+
 (require 'package)
 
 (setq inhibit-startup-message t

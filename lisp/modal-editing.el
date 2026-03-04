@@ -50,7 +50,59 @@ With WINDOW, keep that one as the only visible window."
   :config
   (evil-mode 1)
   (dolist (hook cursor-ai-repl-mode-hooks)
-    (add-hook hook #'cursor-ai--force-evil-emacs-state)))
+    (add-hook hook #'cursor-ai--force-evil-emacs-state))
+  :bind
+  ("s-f" . evil-find-char)
+  ("s-F" . evil-find-char-backward)
+  ("s-o" . evil-execute-in-normal-state)
+  (:map evil-normal-state-map
+        ("\\" . 'link-hint-open-link)))
+
+(use-package hideshow
+  :hook ((prog-mode . hs-minor-mode)
+	 (text-mode . hs-minor-mode)))
+
+(define-prefix-command 's-z-prefix-map)
+(global-set-key (kbd "s-z") 's-z-prefix-map)
+
+(use-package goto-chg
+  :ensure nil
+  :bind (("s-a" . goto-last-change)
+         ("s-A" . goto-last-change-reverse)))
+
+(use-package link-hint
+  :after (eww)
+  :bind
+  (:map s-z-prefix-map
+        ("a" . link-hint-open-link))
+  (:map eww-mode-map
+        ("f" . link-hint-open-link))
+  (:map help-mode-map
+        ("f" . link-hint-open-link))
+  (:map package-menu-mode-map
+        ("f" . link-hint-open-link)))
+
+(use-package avy
+  :config
+  (setq avy-keys '(?a ?r ?s ?t ?n ?e ?i ?o))
+  :bind
+  ("M-z" . avy-goto-char-timer)
+  (:map s-z-prefix-map
+        ("d" . 'avy-kill-whole-line)
+        ("k" . 'avy-kill-region)
+        ("R" . 'avy-move-region)
+        ("L" . 'avy-kill-ring-save-whole-line)
+        ("l" . 'avy-copy-line)
+        ("m" . 'avy-move-line)
+        ("s" . 'avy-isearch)
+        ("r" . 'avy-copy-region)
+        ("g" . 'avy-goto-char)
+        ("o" . 'avy-goto-char-in-line)))
+
+(use-package avy-zap
+  :bind
+  ("C-M-z" . avy-zap-to-char)
+  ("C-M-Z" . avy-zap-up-to-char))
 
 (provide 'modal-editing)
 

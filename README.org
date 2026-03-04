@@ -1,0 +1,2 @@
+* Disclaimer
+This is a work in progress, and I don't guarantee that it will work as expected. Use it at your own risk. I have created this configuration for fun in my server I'd remark that it is utilizing exclusively to use vterm and magit, that's why I was playing a lot with agents to add new characteristics to emacs base and I chose the copyrighted name 'cursor' as standard, there are some of my config ideas and some keybindings.
